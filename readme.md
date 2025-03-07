@@ -3,7 +3,7 @@
 
 ## How to start:
 1. passende tglib binary auswählen, in pytglib.xyz umbenennen und auf die Ordnerebene von app.py kopieren.
-3. app.py ausführen mit Python 3.13 ausführen
+3. app.py mit Python 3.13 ausführen
 4. local IP aus Konsole im Browser aufrufen
 
 ## Was kann die Flask-App:
