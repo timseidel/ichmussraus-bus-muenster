@@ -1,0 +1,6 @@
+static/tg_busfussbus.tg
+static/tg_bus.tg
+static/tg_fussbus.tg
+
+pytglib.so
+pytglib.pyd

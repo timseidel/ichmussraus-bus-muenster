@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ich muss hier raus!</title>
+    <!-- Include Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <!-- Include Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <!-- Include Leaflet AwesomeMarkers CSS -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"
+    />
+    <!-- Favicon link -->
+    <link
+      rel="icon"
+      href="{{ url_for('static', filename='favicon.ico') }}"
+      type="image/x-icon"
+    />
+    <style>
+      /* Make the map fill the entire viewport */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+      #map {
+        height: 100%;
+        width: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+      /* Floating panel on the left side */
+      #control-panel {
+        position: absolute;
+        top: 80px;
+        left: 20px;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        width: 250px;
+        z-index: 1000;
+      }
+      h1 {
+        font-size: 1.2rem;
+        margin-bottom: 15px;
+      }
+    </style>
+    <!-- Include jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Include Bootstrap JS -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
+    <!-- Include Leaflet JS -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <!-- Include Leaflet AwesomeMarkers JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+  </head>
+  <body>
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- Floating Control Panel -->
+    <div id="control-panel">
+      <h1 class="text-center">Ich muss raus!</h1>
+      <div class="form-group">
+        <label for="time-picker">Uhrzeit wählen</label>
+        <input
+          type="time"
+          id="time-picker"
+          class="form-control"
+          value="00:00"
+        />
+      </div>
+      <div class="text-center mt-2">
+        <button class="btn btn-success" onclick="generateData()">
+          Karte aktualisieren
+        </button>
+      </div>
+      <div id="infobox" class="alert alert-success mt-3" role="alert"></div>
+    </div>
+
+    <script>
+      let cachedStops = [];
+
+      function initializeCache() {
+        fetch("/load-stops")
+          .then((response) => response.json())
+          .then((data) => {
+            cachedStops = data;
+            // console.log("Cached Stops:", cachedStops); // Hier überprüfen, ob die Datensätze korrekt geladen wurden
+          })
+          .catch((error) => console.error("Error loading stops:", error));
+      }
+
+      // Stelle sicher, dass der Cache initialisiert wird
+      initializeCache();
+
+      // Initialize the map
+      const map = L.map("map").setView([51.960667, 7.626135], 13);
+
+      // Add OpenStreetMap tiles
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+
+      let currentMarker = null;
+
+      // Event listener for map clicks to add a marker
+      map.on("click", function (e) {
+        if (currentMarker) {
+          map.removeLayer(currentMarker);
+        }
+        currentMarker = L.marker(e.latlng).addTo(map);
+      });
+
+      let nearestStopMarker = null;
+
+      // Function to fetch data from the backend
+      let allStopMarkers = []; // Array to keep track of all stop markers
+
+      // Function to fetch data from the backend
+      function generateData() {
+        const timeInput = document.getElementById("time-picker").value;
+        let markerPosition = currentMarker
+          ? [currentMarker.getLatLng().lat, currentMarker.getLatLng().lng]
+          : null;
+
+        if (!markerPosition) {
+          alert("Bitte einen Punkt auf der Karte wählen.");
+          return;
+        }
+
+        fetch("/generate-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            time_input: timeInput,
+            marker_position: markerPosition,
+          }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.error) {
+              alert(data.error);
+              return;
+            }
+
+            // Remove old stop markers from the map
+            allStopMarkers.forEach((marker) => map.removeLayer(marker));
+            allStopMarkers = []; // Clear the array
+
+            const times = data.times;
+            const stopName = data.stop_name;
+            document.getElementById("infobox").innerText = stopName;
+
+            if (nearestStopMarker) {
+              map.removeLayer(nearestStopMarker);
+            }
+
+            const nearestStop = data.nearest_stop;
+            if (nearestStop && nearestStop.lat && nearestStop.lon) {
+              const greenMarker = L.AwesomeMarkers.icon({
+                icon: "info-sign",
+                markerColor: "green",
+              });
+              nearestStopMarker = L.marker([nearestStop.lat, nearestStop.lon], {
+                icon: greenMarker,
+              }).addTo(map);
+              map.removeLayer(currentMarker);
+            }
+
+            const enrichedStops = cachedStops.map((stop, index) => ({
+              ...stop,
+              time: times[index],
+            }));
+
+            if (enrichedStops && enrichedStops.length > 0) {
+              enrichedStops.forEach((stop) => {
+                let color;
+                if (stop.time <= 5) {
+                  color = "#00FF00";
+                } else if (stop.time <= 10) {
+                  color = "#66ff00";
+                } else if (stop.time <= 15) {
+                  color = "#99ff00";
+                } else if (stop.time <= 20) {
+                  color = "#ccff00";
+                } else if (stop.time <= 25) {
+                  color = "#FFFF00";
+                } else if (stop.time <= 30) {
+                  color = "#FFCC00";
+                } else if (stop.time <= 35) {
+                  color = "#ff9900";
+                } else if (stop.time <= 40) {
+                  color = "#ff6600";
+                } else if (stop.time <= 45) {
+                  color = "#FF3300";
+                } else if (stop.time <= 50) {
+                  color = "#FF0000";
+                } else if (stop.time <= 55) {
+                  color = "#d60202";
+                } else if (stop.time <= 60) {
+                  color = "#b80202";
+                } else if (stop.time <= 65) {
+                  color = "#a30000";
+                } else if (stop.time <= 70) {
+                  color = "#FF3300";
+                } else if (stop.time <= 75) {
+                  color = "#870000";
+                } else if (stop.time <= 80) {
+                  color = "#690000";
+                } else if (stop.time <= 85) {
+                  color = "#4a0000";
+                } else if (stop.time <= 90) {
+                  color = "#240000";
+                } else {
+                  color = "#0a0000";
+                }
+
+                // Create a marker for each stop
+                const stopMarker = L.circleMarker(
+                  [stop.stop_lat, stop.stop_lon],
+                  {
+                    color: color,
+                    radius: 8,
+                    fillOpacity: 0.8,
+                  }
+                ).addTo(map);
+
+                stopMarker.bindPopup(
+                  `<b>${stop.stop_name}</b> Time: ${stop.time}`
+                );
+
+                // Add the marker to the array for later reference
+                allStopMarkers.push(stopMarker);
+              });
+            }
+          })
+          .catch((error) => {
+            console.error(
+              "There was a problem with the fetch operation:",
+              error
+            );
+          });
+      }
+    </script>
+  </body>
+</html>
